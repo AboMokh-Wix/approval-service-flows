@@ -398,7 +398,7 @@ const agentScenarios = [
       { hl: ['ext-create'], edge: null, title: 'SDL CREATED event arrives', desc: 'Agent-maker\'s <code>ApprovalRequest</code> entity created. SDL domain event published to Kafka. Contains <code>id</code>, <code>invocation_id</code>, <code>status</code>, <code>initial_payload</code>, <code>payload_schema</code>, <code>tool_name</code>, <code>summary</code>.' },
       { hl: ['ext-create','lookup'], edge: 'ext-create->lookup', title: 'Lookup mirror', desc: 'Query our table by <code>custom_agent_info.source_approval_request_id</code> matching the incoming <code>id</code>.' },
       { hl: ['lookup','enrich'], edge: 'lookup->enrich', title: 'Mirror not found → enrich', desc: 'No existing mirror. Fetch the <code>Invocation</code> entity via <code>SearchInvocations(invocation_id)</code> to check for <code>automation_trigger_metadata</code>.' },
-      { hl: ['enrich','mirror-new'], edge: 'enrich->mirror-new', title: 'Create mirror', desc: 'Invocation has <code>automation_trigger_metadata</code> → create mirrored <code>ApprovalRequest</code> with <code>origin=CUSTOM_AGENT</code>. Populate <code>automation_context</code> from metadata. Set <code>custom_agent_info</code> (source ID, task ID, invocation ID, tool call ID). Map content: <code>initial_payload→initial_data</code>, <code>payload_schema→data_schema</code>, <code>tool_name+summary→data_ui_schema</code>. All set once.' },
+      { hl: ['enrich','mirror-new'], edge: 'enrich->mirror-new', title: 'Create mirror', desc: 'Invocation has <code>automation_trigger_metadata</code> → create mirrored <code>ApprovalRequest</code> with <code>origin=CUSTOM_AGENT</code>. Populate <code>automation_context</code> from metadata. Set <code>custom_agent_info</code> (source ID, task ID, invocation ID, tool call ID). Map content: <code>initial_payload→initial_data</code>, <code>payload_schema→data_schema</code>, <code>tool_name+summary+api_call_docs_url→data_ui_schema</code>. All set once.' },
     ]
   },
   {
@@ -423,7 +423,7 @@ const agentScenarios = [
       { hl: ['ext-create'], edge: null, title: 'SDL CREATED event (status=ACCEPTED)', desc: 'Agent-maker\'s SPI auto-approval creates the ApprovalRequest directly as ACCEPTED — it never passes through PENDING. <code>status_modified_by</code> has SYSTEM actor.' },
       { hl: ['ext-create','lookup'], edge: 'ext-create->lookup', title: 'Lookup mirror', desc: 'No existing mirror.' },
       { hl: ['lookup','enrich'], edge: 'lookup->enrich', title: 'Fetch invocation', desc: 'Check for <code>automation_trigger_metadata</code>.' },
-      { hl: ['enrich','mirror-new'], edge: 'enrich->mirror-new', title: 'Create mirror as APPROVED', desc: 'Mirror created with <code>status=APPROVED</code> directly. <code>status_info.modified_by.app_id</code> = their <code>app_def_id</code>. UI distinguishes auto-approved (app_id) from human-approved (user_id).' },
+      { hl: ['enrich','mirror-new'], edge: 'enrich->mirror-new', title: 'Create mirror as APPROVED', desc: 'Mirror created with <code>status=APPROVED</code> directly. <code>decision_reason=UNKNOWN_DECISION_REASON</code> (not USER_APPROVED — this is a system decision, not a human one). <code>modified_by.app_id</code> = their <code>app_def_id</code>. UI can distinguish auto-approved (app_id actor) from human-approved (user_id actor).' },
     ]
   },
   {
@@ -431,7 +431,7 @@ const agentScenarios = [
     steps: [
       { hl: ['ext-update'], edge: null, title: 'SDL UPDATED (status=REJECTED, no actor)', desc: 'Invocation\'s 30-day TimeCapsule fires. Invocations service bulk-rejects all remaining PENDING approval requests. <code>status_modified_by</code> is empty.' },
       { hl: ['ext-update','lookup'], edge: 'ext-update->lookup', title: 'Lookup mirror', desc: 'Mirror exists from earlier CREATED event.' },
-      { hl: ['lookup','mirror-upd'], edge: 'lookup->mirror-upd', title: 'Update mirror → REJECTED', desc: '<code>status→REJECTED</code>. <code>status_info.modified_by</code> is empty (no actor). Phase 1 maps all their REJECTED to our REJECTED — we don\'t distinguish timeout-rejects from human rejects.' },
+      { hl: ['lookup','mirror-upd'], edge: 'lookup->mirror-upd', title: 'Update mirror → REJECTED', desc: '<code>status→REJECTED</code>. <code>decision_reason=UNKNOWN_DECISION_REASON</code> (not USER_REJECTED — nobody actively said no). <code>modified_by</code> is empty (no actor). Phase 1 maps all their REJECTED to our REJECTED.' },
     ]
   },
   {
