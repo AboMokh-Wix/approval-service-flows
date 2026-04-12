@@ -356,8 +356,8 @@ const autoScenarios = [
   {
     id: 'approve-clean', name: 'Approve (no edit)', dot: C.approved.stroke,
     steps: [
-      { hl: ['create'], edge: null, title: 'Consumer creates approval request', desc: 'LLM action generates content and calls <code>CreateApprovalRequest</code> with the generated text as <code>initial_data</code>. Sets <code>expires_at</code> and <code>consumer_context</code> (with invocation token). Returns <code>TIMEOUT_DATE</code> to ESB runtime.' },
-      { hl: ['create','pending'], edge: 'create->pending', title: 'Status: PENDING', desc: 'Approval request is now <code>PENDING</code>. TimeCapsule scheduled for <code>expires_at</code>. <code>ApprovalRequestCreated</code> domain event fires. Pre-installed automation sends email + push notification to the reviewer.' },
+      { hl: ['create'], edge: null, title: 'Consumer creates approval request', desc: 'LLM action generates content and calls <code>CreateApprovalRequest</code> with the generated text as <code>initial_data</code>. Sets <code>expiration_date</code> and <code>consumer_context</code> (with invocation token). Returns <code>TIMEOUT_DATE</code> to ESB runtime.' },
+      { hl: ['create','pending'], edge: 'create->pending', title: 'Status: PENDING', desc: 'Approval request is now <code>PENDING</code>. TimeCapsule scheduled for <code>expiration_date</code>. <code>ApprovalRequestCreated</code> domain event fires. Pre-installed automation sends email + push notification to the reviewer.' },
       { hl: ['pending'], edge: null, title: 'Reviewer sees the request', desc: 'Reviewer opens the approval management page from the notification link. Sees the content in <code>initial_data</code> rendered according to <code>data_ui_schema</code>. Reviews the content.' },
       { hl: ['pending','approved'], edge: 'pending->approved', title: 'Reviewer approves', desc: 'Reviewer clicks Approve. Calls <code>AcceptApprovalRequest</code> with no <code>updated_data</code>. Status transitions to <code>APPROVED</code>. TimeCapsule cancelled. <code>status_info</code> populated with <code>decision_reason=USER_APPROVED</code>, reviewer identity, and timestamp.' },
       { hl: ['approved'], edge: null, title: 'Consumer resumes workflow', desc: '<code>ApprovalRequestAccepted</code> domain event fires. LLM action adapter reads <code>consumer_context</code> to get invocation token. Resolves final content: <code>updated_data</code> if present (reviewer edited), else <code>initial_data</code> (original). Calls <code>reportActionInvocationCompleted(SUCCESS, final_content)</code>. Automation resumes.' },
@@ -384,8 +384,8 @@ const autoScenarios = [
   {
     id: 'timeout-pending', name: 'Timeout (from PENDING)', dot: C.timedout.stroke,
     steps: [
-      { hl: ['create','pending'], edge: 'create->pending', title: 'Request created, clock ticking', desc: '<code>expires_at</code> set at creation. TimeCapsule scheduled. Maximum 30 days.' },
-      { hl: ['pending','timedout'], edge: 'pending->timedout', title: 'TimeCapsule fires', desc: 'Background job finds <code>status = PENDING AND expires_at &lt;= now()</code>. Transitions to <code>TIMED_OUT</code>. <code>status_info.decision_reason = TIMEOUT</code>.' },
+      { hl: ['create','pending'], edge: 'create->pending', title: 'Request created, clock ticking', desc: '<code>expiration_date</code> set at creation. TimeCapsule scheduled. Maximum 30 days.' },
+      { hl: ['pending','timedout'], edge: 'pending->timedout', title: 'TimeCapsule fires', desc: 'Background job finds <code>status = PENDING AND expiration_date &lt;= now()</code>. Transitions to <code>TIMED_OUT</code>. <code>status_info.decision_reason = TIMED_OUT</code>.' },
       { hl: ['timedout'], edge: null, title: 'Consumer handles timeout', desc: '<code>ApprovalRequestTimedOut</code> event fires. Consumer handles based on policy — same as rejection handling.' },
     ]
   },
@@ -406,7 +406,7 @@ const agentScenarios = [
     steps: [
       { hl: ['ext-update'], edge: null, title: 'SDL UPDATED event (status=ACCEPTED)', desc: 'Reviewer approves on the agent-maker UI. Entity status changes to ACCEPTED. SDL UPDATED event published.' },
       { hl: ['ext-update','lookup'], edge: 'ext-update->lookup', title: 'Lookup mirror', desc: 'Query by <code>source_approval_request_id</code>. Mirror exists from the CREATED event.' },
-      { hl: ['lookup','mirror-upd'], edge: 'lookup->mirror-upd', title: 'Update mirror', desc: 'Check <code>revision > stored revision</code> (skip if stale). Update: <code>status→APPROVED</code>, populate <code>status_info</code> (<code>decision_reason=USER_APPROVED</code>, <code>modified_by</code> from their Actor, <code>decided_at</code> from <code>updated_date</code>). Update <code>updated_data</code> from their <code>updated_payload</code> if changed.' },
+      { hl: ['lookup','mirror-upd'], edge: 'lookup->mirror-upd', title: 'Update mirror', desc: 'Check <code>revision > stored revision</code> (skip if stale). Update: <code>status→APPROVED</code>, populate <code>status_info</code> (<code>decision_reason=USER_APPROVED</code>, <code>modified_by</code> from their Actor, <code>decided_date</code> from <code>updated_date</code>). Update <code>updated_data</code> from their <code>updated_payload</code> if changed.' },
     ]
   },
   {
