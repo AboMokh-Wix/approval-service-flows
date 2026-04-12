@@ -1,0 +1,735 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Approval Service — Interactive Flows</title>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0c0e14;
+    --surface: #13161f;
+    --surface2: #1c2030;
+    --surface3: #242938;
+    --border: #2a2f42;
+    --border2: #353b52;
+    --text: #e4e7f1;
+    --text2: #9198b0;
+    --text3: #6b7394;
+    --accent: #7b9cff;
+    --accent2: #5272e8;
+    --green: #3ddc97;
+    --red: #ff6b6b;
+    --yellow: #ffc145;
+    --purple: #b08cff;
+    --orange: #ff9f43;
+    --cyan: #22d3ee;
+    --blue: #60a5fa;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: 'Outfit', -apple-system, BlinkMacSystemFont, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    overflow: hidden;
+  }
+
+  /* ── App layout ── */
+  .app { display: flex; flex-direction: column; height: 100vh; }
+
+  header {
+    padding: 18px 32px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    flex-shrink: 0;
+    background: linear-gradient(180deg, rgba(30,34,50,.6) 0%, transparent 100%);
+  }
+  header h1 {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 16px;
+    font-weight: 600;
+    letter-spacing: -.02em;
+    color: var(--text);
+  }
+  header .subtitle {
+    color: var(--text3);
+    font-size: 13px;
+    font-weight: 400;
+    padding-left: 12px;
+    border-left: 1px solid var(--border);
+  }
+  .tab-bar {
+    display: flex;
+    gap: 2px;
+    background: var(--surface2);
+    border-radius: 10px;
+    padding: 3px;
+    margin-left: auto;
+  }
+  .tab {
+    padding: 8px 20px;
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    color: var(--text3);
+    transition: all .2s ease;
+    border: none;
+    background: none;
+    font-family: inherit;
+  }
+  .tab.active {
+    background: var(--accent2);
+    color: #fff;
+    box-shadow: 0 2px 8px rgba(82,114,232,.35);
+  }
+  .tab:hover:not(.active) { color: var(--text); background: var(--surface3); }
+
+  .main { display: flex; flex: 1; overflow: hidden; min-height: 0; }
+
+  /* ── Sidebar ── */
+  .sidebar {
+    width: 280px;
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    flex-shrink: 0;
+    background: var(--surface);
+  }
+  .sidebar h2 {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: .12em;
+    color: var(--text3);
+    padding: 20px 20px 10px;
+    font-weight: 500;
+  }
+  .scenario-list { flex: 1; overflow-y: auto; padding: 4px 10px 16px; }
+  .scenario-btn {
+    width: 100%;
+    text-align: left;
+    padding: 11px 14px;
+    border-radius: 8px;
+    border: none;
+    background: none;
+    color: var(--text2);
+    font-size: 13px;
+    font-weight: 400;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 11px;
+    transition: all .15s ease;
+    font-family: inherit;
+    margin-bottom: 2px;
+  }
+  .scenario-btn:hover { background: var(--surface2); color: var(--text); }
+  .scenario-btn.active {
+    background: var(--accent2);
+    color: #fff;
+    font-weight: 500;
+    box-shadow: 0 2px 8px rgba(82,114,232,.25);
+  }
+  .scenario-btn .dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    box-shadow: 0 0 6px currentColor;
+  }
+
+  /* ── Canvas ── */
+  .canvas-area { flex: 1; display: flex; flex-direction: column; overflow: hidden; min-width: 0; }
+  .state-machine { flex: 1; position: relative; overflow: hidden; min-height: 0; }
+  .state-machine svg { width: 100%; height: 100%; display: block; }
+
+  /* ── Legend ── */
+  .legend {
+    display: flex;
+    gap: 20px;
+    padding: 10px 28px;
+    border-top: 1px solid var(--border);
+    flex-wrap: wrap;
+    background: var(--surface);
+  }
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    font-size: 11px;
+    color: var(--text3);
+    font-weight: 400;
+  }
+  .legend-item .swatch {
+    width: 10px;
+    height: 10px;
+    border-radius: 3px;
+  }
+
+  /* ── Walkthrough ── */
+  .walkthrough {
+    border-top: 1px solid var(--border);
+    background: var(--surface);
+    flex-shrink: 0;
+  }
+  .walk-controls {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 28px;
+    border-bottom: 1px solid var(--border);
+  }
+  .walk-controls button {
+    padding: 7px 18px;
+    border-radius: 7px;
+    border: 1px solid var(--border2);
+    background: var(--surface2);
+    color: var(--text2);
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all .15s ease;
+    font-family: inherit;
+  }
+  .walk-controls button:hover:not(:disabled) {
+    border-color: var(--accent);
+    color: var(--accent);
+    background: rgba(123,156,255,.08);
+  }
+  .walk-controls button:disabled { opacity: .3; cursor: default; }
+  .walk-controls .step-counter {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 12px;
+    color: var(--text3);
+    margin-left: auto;
+  }
+
+  .step-detail {
+    padding: 20px 32px 24px;
+    min-height: 130px;
+    max-height: 260px;
+    overflow-y: auto;
+  }
+  .step-detail .step-title {
+    font-size: 17px;
+    font-weight: 600;
+    margin-bottom: 10px;
+    color: var(--text);
+    letter-spacing: -.01em;
+  }
+  .step-detail .step-desc {
+    font-size: 15px;
+    color: var(--text2);
+    line-height: 1.75;
+    max-width: 900px;
+  }
+  .step-detail .step-desc code {
+    font-family: 'IBM Plex Mono', monospace;
+    background: var(--surface3);
+    padding: 2px 8px;
+    border-radius: 5px;
+    font-size: 13px;
+    color: var(--accent);
+    border: 1px solid var(--border);
+  }
+
+  /* ── SVG node styles ── */
+  .state-node { cursor: default; }
+  .state-node rect { transition: stroke-width .25s ease, filter .25s ease; }
+  .state-node.highlight rect {
+    stroke-width: 3;
+    filter: drop-shadow(0 0 16px var(--glow-color, rgba(123,156,255,.4)));
+  }
+  .state-node text { pointer-events: none; }
+
+  .edge { transition: opacity .25s ease; }
+  .edge.dim { opacity: .1; }
+  .edge.highlight { opacity: 1; }
+  .edge.highlight path { stroke-width: 2.5; }
+  .edge path { transition: stroke-width .25s ease; }
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <h1>Approval Service</h1>
+    <span class="subtitle">Interactive Flow Explorer</span>
+    <div class="tab-bar">
+      <button class="tab active" data-tab="automation">Automation Flows</button>
+      <button class="tab" data-tab="agent">Custom Agent Sync</button>
+    </div>
+  </header>
+  <div class="main">
+    <div class="sidebar">
+      <h2>Scenarios</h2>
+      <div class="scenario-list" id="scenarioList"></div>
+    </div>
+    <div class="canvas-area">
+      <div class="state-machine" id="stateMachine"></div>
+      <div class="legend" id="legend"></div>
+      <div class="walkthrough">
+        <div class="walk-controls">
+          <button id="btnPrev" disabled>&larr; Prev</button>
+          <button id="btnNext">Next &rarr;</button>
+          <button id="btnReset">Reset</button>
+          <span class="step-counter" id="stepCounter">Select a scenario</span>
+        </div>
+        <div class="step-detail" id="stepDetail">
+          <div class="step-title">Choose a scenario from the left</div>
+          <div class="step-desc">Click any scenario to walk through it step by step. Use Next / Prev or arrow keys to advance.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ═══════════════════════════════════════
+//  COLORS
+// ═══════════════════════════════════════
+const C = {
+  pending:   { fill: '#152240', stroke: '#60a5fa', text: '#60a5fa', glow: 'rgba(96,165,250,.35)' },
+  changes:   { fill: '#2e2410', stroke: '#ffc145', text: '#ffc145', glow: 'rgba(255,193,69,.3)' },
+  approved:  { fill: '#102e22', stroke: '#3ddc97', text: '#3ddc97', glow: 'rgba(61,220,151,.3)' },
+  rejected:  { fill: '#301818', stroke: '#ff6b6b', text: '#ff6b6b', glow: 'rgba(255,107,107,.3)' },
+  timedout:  { fill: '#2e2010', stroke: '#ff9f43', text: '#ff9f43', glow: 'rgba(255,159,67,.3)' },
+  cancelled: { fill: '#221838', stroke: '#b08cff', text: '#b08cff', glow: 'rgba(176,140,255,.3)' },
+  create:    { fill: '#141e30', stroke: '#7b9cff', text: '#7b9cff', glow: 'rgba(123,156,255,.3)' },
+  neutral:   { fill: '#181c28', stroke: '#6b7394', text: '#6b7394', glow: 'rgba(107,115,148,.2)' },
+  cyan:      { fill: '#0e2028', stroke: '#22d3ee', text: '#22d3ee', glow: 'rgba(34,211,238,.3)' },
+};
+
+// ═══════════════════════════════════════
+//  AUTOMATION STATES + EDGES
+// ═══════════════════════════════════════
+const autoStates = [
+  { id: 'create',    label: 'Create',               x: 120,  y: 300, w: 120, h: 50, color: C.create, round: true },
+  { id: 'pending',   label: 'PENDING',              x: 400,  y: 300, w: 140, h: 50, color: C.pending },
+  { id: 'approved',  label: 'APPROVED',             x: 720,  y: 140, w: 150, h: 50, color: C.approved, terminal: true },
+  { id: 'rejected',  label: 'REJECTED',             x: 720,  y: 300, w: 150, h: 50, color: C.rejected, terminal: true },
+  { id: 'timedout',  label: 'TIMED_OUT',            x: 720,  y: 460, w: 150, h: 50, color: C.timedout, terminal: true },
+];
+
+const autoEdges = [
+  { from: 'create',  to: 'pending',   fs: 'right', ts: 'left',   label: 'CreateApprovalRequest', color: C.create.stroke,    labelDy: -14 },
+  { from: 'pending', to: 'approved',  fs: 'right', ts: 'left',   label: 'Accept',                color: C.approved.stroke,  labelDy: -12 },
+  { from: 'pending', to: 'rejected',  fs: 'right', ts: 'left',   label: 'Reject',                color: C.rejected.stroke,  labelDy: -12 },
+  { from: 'pending', to: 'timedout',  fs: 'right', ts: 'left',   label: 'Timeout',               color: C.timedout.stroke,  labelDy: -12 },
+];
+
+// ═══════════════════════════════════════
+//  AGENT SYNC STATES + EDGES
+// ═══════════════════════════════════════
+const agentStates = [
+  { id: 'ext-create', label: 'SDL\nCREATED',          x: 110, y: 140, w: 125, h: 56, color: C.create,   round: true },
+  { id: 'ext-update', label: 'SDL\nUPDATED',          x: 110, y: 370, w: 125, h: 56, color: C.cyan,     round: true },
+  { id: 'ext-delete', label: 'SDL\nDELETE',           x: 110, y: 580, w: 125, h: 56, color: C.cancelled,round: true },
+  { id: 'lookup',     label: 'Lookup\nMirror',        x: 380, y: 340, w: 140, h: 56, color: C.neutral },
+  { id: 'enrich',     label: 'Fetch\nInvocation',     x: 620, y: 140, w: 150, h: 56, color: C.neutral },
+  { id: 'skip',       label: 'Skip\n(no auto meta)',  x: 620, y: 510, w: 155, h: 56, color: { fill: '#16182a', stroke: '#4a4f6a', text: '#4a4f6a', glow: 'rgba(74,79,106,.2)' }, terminal: true },
+  { id: 'mirror-new', label: 'Create\nMirror',        x: 880, y: 80,  w: 140, h: 56, color: C.approved },
+  { id: 'mirror-upd', label: 'Update\nMirror',        x: 880, y: 280, w: 140, h: 56, color: C.cyan },
+  { id: 'mirror-del', label: 'Delete\nMirror',        x: 880, y: 480, w: 140, h: 56, color: C.rejected },
+  { id: 'noop',       label: 'No-op',                 x: 880, y: 630, w: 110, h: 48, color: { fill: '#16182a', stroke: '#4a4f6a', text: '#4a4f6a', glow: 'rgba(74,79,106,.2)' }, terminal: true },
+];
+
+const agentEdges = [
+  { from: 'ext-create', to: 'lookup',     fs: 'right', ts: 'left', label: '',                 color: C.create.stroke },
+  { from: 'ext-update', to: 'lookup',     fs: 'right', ts: 'left', label: '',                 color: C.cyan.stroke },
+  { from: 'ext-delete', to: 'lookup',     fs: 'right', ts: 'left', label: '',                 color: C.cancelled.stroke },
+  { from: 'lookup',     to: 'enrich',     fs: 'top',   ts: 'left', label: 'Not found',        color: C.neutral.stroke, labelDx: -10, labelDy: -10 },
+  { from: 'lookup',     to: 'mirror-upd', fs: 'right', ts: 'left', label: 'Found',            color: C.cyan.stroke,    labelDy: -12 },
+  { from: 'lookup',     to: 'mirror-del', fs: 'right', ts: 'left', label: 'Found (DELETE)',    color: C.rejected.stroke,labelDy: -12 },
+  { from: 'lookup',     to: 'noop',       fs: 'right', ts: 'left', label: 'Not found (DELETE)',color: '#4a4f6a',        labelDy: -12 },
+  { from: 'enrich',     to: 'mirror-new', fs: 'right', ts: 'left', label: 'Has automation\nmetadata', color: C.approved.stroke, labelDy: -12 },
+  { from: 'enrich',     to: 'skip',       fs: 'bottom',ts: 'top',  label: 'No metadata',      color: '#4a4f6a',        labelDx: 70, labelDy: 4 },
+];
+
+// ═══════════════════════════════════════
+//  SCENARIOS
+// ═══════════════════════════════════════
+const autoScenarios = [
+  {
+    id: 'approve-clean', name: 'Approve (no edit)', dot: C.approved.stroke,
+    steps: [
+      { hl: ['create'], edge: null, title: 'Consumer creates approval request', desc: 'LLM action generates content and calls <code>CreateApprovalRequest</code> with the generated text as <code>initial_data</code>. Sets <code>expires_at</code> and <code>consumer_context</code> (with invocation token). Returns <code>TIMEOUT_DATE</code> to ESB runtime.' },
+      { hl: ['create','pending'], edge: 'create->pending', title: 'Status: PENDING', desc: 'Approval request is now <code>PENDING</code>. TimeCapsule scheduled for <code>expires_at</code>. <code>ApprovalRequestCreated</code> domain event fires. Pre-installed automation sends email + push notification to the reviewer.' },
+      { hl: ['pending'], edge: null, title: 'Reviewer sees the request', desc: 'Reviewer opens the approval management page from the notification link. Sees the content in <code>initial_data</code> rendered according to <code>data_ui_schema</code>. Reviews the content.' },
+      { hl: ['pending','approved'], edge: 'pending->approved', title: 'Reviewer approves', desc: 'Reviewer clicks Approve. Calls <code>AcceptApprovalRequest</code> with no <code>updated_data</code>. Status transitions to <code>APPROVED</code>. TimeCapsule cancelled. <code>status_info</code> populated with <code>decision_reason=USER_APPROVED</code>, reviewer identity, and timestamp.' },
+      { hl: ['approved'], edge: null, title: 'Consumer resumes workflow', desc: '<code>ApprovalRequestAccepted</code> domain event fires. LLM action adapter reads <code>consumer_context</code> to get invocation token. Resolves final content: <code>updated_data</code> if present (reviewer edited), else <code>initial_data</code> (original). Calls <code>reportActionInvocationCompleted(SUCCESS, final_content)</code>. Automation resumes.' },
+    ]
+  },
+  {
+    id: 'approve-edit', name: 'Approve with edit', dot: C.approved.stroke,
+    steps: [
+      { hl: ['create'], edge: null, title: 'Consumer creates approval request', desc: 'Same as clean approve. The approval is editable — the reviewer can modify the content before approving.' },
+      { hl: ['create','pending'], edge: 'create->pending', title: 'Status: PENDING', desc: 'Request created as <code>PENDING</code>. Notification sent. Reviewer can view and edit the content.' },
+      { hl: ['pending'], edge: null, title: 'Reviewer edits content', desc: 'Reviewer modifies the payload on the approval page. Two options: call <code>UpdateApprovalRequest</code> to save edits then <code>AcceptApprovalRequest</code> separately, or call <code>AcceptApprovalRequest</code> with <code>updated_data</code> for atomic edit+approve.' },
+      { hl: ['pending','approved'], edge: 'pending->approved', title: 'Reviewer approves with edits', desc: '<code>AcceptApprovalRequest(updated_data=edited_content)</code>. If <code>data_schema</code> exists, <code>updated_data</code> is validated against it. Status → <code>APPROVED</code>. TimeCapsule cancelled.' },
+      { hl: ['approved'], edge: null, title: 'Consumer gets edited content', desc: 'Content resolution: <code>updated_data</code> is non-empty → that becomes the final content. Consumer calls <code>reportActionInvocationCompleted(SUCCESS, updated_data)</code>. Automation continues with the reviewer\'s edited version.' },
+    ]
+  },
+  {
+    id: 'reject', name: 'Reject', dot: C.rejected.stroke,
+    steps: [
+      { hl: ['create','pending'], edge: 'create->pending', title: 'Approval request created', desc: 'Consumer creates request. Status is <code>PENDING</code>. Notification sent.' },
+      { hl: ['pending','rejected'], edge: 'pending->rejected', title: 'Reviewer rejects', desc: 'Reviewer calls <code>RejectApprovalRequest</code> with optional <code>reason_detail</code>. Status → <code>REJECTED</code>. TimeCapsule cancelled. <code>status_info.decision_reason = USER_REJECTED</code>.' },
+      { hl: ['rejected'], edge: null, title: 'Consumer handles rejection', desc: '<code>ApprovalRequestRejected</code> event fires. The consumer decides what to do: report FAILURE (automation stops), report SUCCESS with empty output (automation continues), or any custom logic. This is entirely the consumer\'s decision, not dictated by the approval service.' },
+    ]
+  },
+  {
+    id: 'timeout-pending', name: 'Timeout (from PENDING)', dot: C.timedout.stroke,
+    steps: [
+      { hl: ['create','pending'], edge: 'create->pending', title: 'Request created, clock ticking', desc: '<code>expires_at</code> set at creation. TimeCapsule scheduled. Maximum 30 days.' },
+      { hl: ['pending','timedout'], edge: 'pending->timedout', title: 'TimeCapsule fires', desc: 'Background job finds <code>status = PENDING AND expires_at &lt;= now()</code>. Transitions to <code>TIMED_OUT</code>. <code>status_info.decision_reason = TIMEOUT</code>.' },
+      { hl: ['timedout'], edge: null, title: 'Consumer handles timeout', desc: '<code>ApprovalRequestTimedOut</code> event fires. Consumer handles based on policy — same as rejection handling.' },
+    ]
+  },
+];
+
+const agentScenarios = [
+  {
+    id: 'agent-create', name: 'New approval → mirror created', dot: C.approved.stroke,
+    steps: [
+      { hl: ['ext-create'], edge: null, title: 'SDL CREATED event arrives', desc: 'Agent-maker\'s <code>ApprovalRequest</code> entity created. SDL domain event published to Kafka. Contains <code>id</code>, <code>invocation_id</code>, <code>status</code>, <code>initial_payload</code>, <code>payload_schema</code>, <code>tool_name</code>, <code>summary</code>.' },
+      { hl: ['ext-create','lookup'], edge: 'ext-create->lookup', title: 'Lookup mirror', desc: 'Query our table by <code>custom_agent_info.source_approval_request_id</code> matching the incoming <code>id</code>.' },
+      { hl: ['lookup','enrich'], edge: 'lookup->enrich', title: 'Mirror not found → enrich', desc: 'No existing mirror. Fetch the <code>Invocation</code> entity via <code>SearchInvocations(invocation_id)</code> to check for <code>automation_trigger_metadata</code>.' },
+      { hl: ['enrich','mirror-new'], edge: 'enrich->mirror-new', title: 'Create mirror', desc: 'Invocation has <code>automation_trigger_metadata</code> → create mirrored <code>ApprovalRequest</code> with <code>origin=CUSTOM_AGENT</code>. Populate <code>automation_context</code> from metadata. Set <code>custom_agent_info</code> (source ID, task ID, invocation ID, tool call ID). Map content: <code>initial_payload→initial_data</code>, <code>payload_schema→data_schema</code>, <code>tool_name+summary→data_ui_schema</code>. All set once.' },
+    ]
+  },
+  {
+    id: 'agent-approve', name: 'Reviewer approves → mirror updated', dot: C.approved.stroke,
+    steps: [
+      { hl: ['ext-update'], edge: null, title: 'SDL UPDATED event (status=ACCEPTED)', desc: 'Reviewer approves on the agent-maker UI. Entity status changes to ACCEPTED. SDL UPDATED event published.' },
+      { hl: ['ext-update','lookup'], edge: 'ext-update->lookup', title: 'Lookup mirror', desc: 'Query by <code>source_approval_request_id</code>. Mirror exists from the CREATED event.' },
+      { hl: ['lookup','mirror-upd'], edge: 'lookup->mirror-upd', title: 'Update mirror', desc: 'Check <code>revision > stored revision</code> (skip if stale). Update: <code>status→APPROVED</code>, populate <code>status_info</code> (<code>decision_reason=USER_APPROVED</code>, <code>modified_by</code> from their Actor, <code>decided_at</code> from <code>updated_date</code>). Update <code>updated_data</code> from their <code>updated_payload</code> if changed.' },
+    ]
+  },
+  {
+    id: 'agent-reject', name: 'Reviewer rejects → mirror updated', dot: C.rejected.stroke,
+    steps: [
+      { hl: ['ext-update'], edge: null, title: 'SDL UPDATED event (status=REJECTED)', desc: 'Reviewer rejects on agent-maker UI. Status changes to REJECTED.' },
+      { hl: ['ext-update','lookup'], edge: 'ext-update->lookup', title: 'Lookup mirror', desc: 'Query by <code>source_approval_request_id</code>.' },
+      { hl: ['lookup','mirror-upd'], edge: 'lookup->mirror-upd', title: 'Update mirror', desc: '<code>status→REJECTED</code>. <code>status_info.decision_reason = USER_REJECTED</code>. <code>modified_by</code> mapped from their UserActor.' },
+    ]
+  },
+  {
+    id: 'agent-auto', name: 'Auto-approval (SPI)', dot: C.approved.stroke,
+    steps: [
+      { hl: ['ext-create'], edge: null, title: 'SDL CREATED event (status=ACCEPTED)', desc: 'Agent-maker\'s SPI auto-approval creates the ApprovalRequest directly as ACCEPTED — it never passes through PENDING. <code>status_modified_by</code> has SYSTEM actor.' },
+      { hl: ['ext-create','lookup'], edge: 'ext-create->lookup', title: 'Lookup mirror', desc: 'No existing mirror.' },
+      { hl: ['lookup','enrich'], edge: 'lookup->enrich', title: 'Fetch invocation', desc: 'Check for <code>automation_trigger_metadata</code>.' },
+      { hl: ['enrich','mirror-new'], edge: 'enrich->mirror-new', title: 'Create mirror as APPROVED', desc: 'Mirror created with <code>status=APPROVED</code> directly. <code>status_info.modified_by.app_id</code> = their <code>app_def_id</code>. UI distinguishes auto-approved (app_id) from human-approved (user_id).' },
+    ]
+  },
+  {
+    id: 'agent-timeout', name: 'Invocation timeout (30-day)', dot: C.timedout.stroke,
+    steps: [
+      { hl: ['ext-update'], edge: null, title: 'SDL UPDATED (status=REJECTED, no actor)', desc: 'Invocation\'s 30-day TimeCapsule fires. Invocations service bulk-rejects all remaining PENDING approval requests. <code>status_modified_by</code> is empty.' },
+      { hl: ['ext-update','lookup'], edge: 'ext-update->lookup', title: 'Lookup mirror', desc: 'Mirror exists from earlier CREATED event.' },
+      { hl: ['lookup','mirror-upd'], edge: 'lookup->mirror-upd', title: 'Update mirror → REJECTED', desc: '<code>status→REJECTED</code>. <code>status_info.modified_by</code> is empty (no actor). Phase 1 maps all their REJECTED to our REJECTED — we don\'t distinguish timeout-rejects from human rejects.' },
+    ]
+  },
+  {
+    id: 'agent-recovery', name: 'Recovery (CREATED missed)', dot: C.cyan.stroke,
+    steps: [
+      { hl: ['ext-create'], edge: null, title: 'CREATED event fails', desc: 'SDL CREATED arrives but processing fails — e.g., transient error fetching the Invocation entity. Event consumed, no mirror created.' },
+      { hl: ['ext-update'], edge: null, title: 'UPDATED event arrives later', desc: 'Status or content changes on the upstream entity. SDL UPDATED event published.' },
+      { hl: ['ext-update','lookup'], edge: 'ext-update->lookup', title: 'Lookup mirror — not found', desc: 'No mirror from the failed CREATED. UPDATED hits the same "not found" code path.' },
+      { hl: ['lookup','enrich'], edge: 'lookup->enrich', title: 'Fetch invocation', desc: 'Same enrichment flow as CREATED: fetch Invocation, check for <code>automation_trigger_metadata</code>.' },
+      { hl: ['enrich','mirror-new'], edge: 'enrich->mirror-new', title: 'Create mirror with current status', desc: 'Mirror created from the UPDATED event\'s current state. The sync is <strong>recoverable</strong> — no single event is the only chance to create the mirror.' },
+    ]
+  },
+  {
+    id: 'agent-skip', name: 'Standalone agent (skipped)', dot: '#4a4f6a',
+    steps: [
+      { hl: ['ext-create'], edge: null, title: 'SDL CREATED event', desc: 'Agent-maker ApprovalRequest created.' },
+      { hl: ['ext-create','lookup'], edge: 'ext-create->lookup', title: 'Lookup mirror — not found', desc: 'First time seeing this ID.' },
+      { hl: ['lookup','enrich'], edge: 'lookup->enrich', title: 'Fetch invocation', desc: 'Fetch the Invocation by <code>invocation_id</code>.' },
+      { hl: ['enrich','skip'], edge: 'enrich->skip', title: 'No automation metadata → skip', desc: 'Invocation has no <code>automation_trigger_metadata</code> — standalone agent chat, not triggered by an automation. Phase 1 only syncs automation-backed approvals.' },
+    ]
+  },
+  {
+    id: 'agent-delete', name: 'Delete (mirror exists)', dot: C.rejected.stroke,
+    steps: [
+      { hl: ['ext-delete'], edge: null, title: 'SDL DELETE event', desc: 'Agent-maker deletes their ApprovalRequest entity.' },
+      { hl: ['ext-delete','lookup'], edge: 'ext-delete->lookup', title: 'Lookup mirror', desc: 'Query by <code>source_approval_request_id</code>.' },
+      { hl: ['lookup','mirror-del'], edge: 'lookup->mirror-del', title: 'Delete mirror', desc: 'Mirror found → delete it from our table.' },
+    ]
+  },
+  {
+    id: 'agent-delete-noop', name: 'Delete (no mirror)', dot: '#4a4f6a',
+    steps: [
+      { hl: ['ext-delete'], edge: null, title: 'SDL DELETE event', desc: 'Agent-maker deletes their ApprovalRequest. Could be a standalone agent approval we never synced.' },
+      { hl: ['ext-delete','lookup'], edge: 'ext-delete->lookup', title: 'Lookup mirror — not found', desc: 'No mirror in our table.' },
+      { hl: ['lookup','noop'], edge: 'lookup->noop', title: 'No-op', desc: 'Nothing to delete. DELETE never creates a mirror — only a cleanup operation.' },
+    ]
+  },
+];
+
+// ═══════════════════════════════════════
+//  ENGINE
+// ═══════════════════════════════════════
+let currentTab = 'automation';
+let currentScenario = null;
+let currentStep = -1;
+
+const data = () => currentTab === 'automation'
+  ? { states: autoStates, edges: autoEdges, scenarios: autoScenarios }
+  : { states: agentStates, edges: agentEdges, scenarios: agentScenarios };
+
+function eid(e) { return e.from + '->' + e.to; }
+
+// Anchor point on a node side
+function anchor(s, side) {
+  switch (side) {
+    case 'top':    return { x: s.x, y: s.y - s.h / 2 };
+    case 'bottom': return { x: s.x, y: s.y + s.h / 2 };
+    case 'left':   return { x: s.x - s.w / 2, y: s.y };
+    case 'right':  return { x: s.x + s.w / 2, y: s.y };
+  }
+}
+
+// Cubic bezier control points for smooth curves
+function ctrlPts(p1, p2, fSide, tSide, isLoop) {
+  if (isLoop) {
+    // Loop-back: go out to the left
+    const loopX = Math.min(p1.x, p2.x) - 90;
+    return [{ x: loopX, y: p1.y }, { x: loopX, y: p2.y }];
+  }
+  const dx = p2.x - p1.x;
+  const dy = p2.y - p1.y;
+  const t = 0.45;
+  if ((fSide === 'right' && tSide === 'left') || (fSide === 'left' && tSide === 'right')) {
+    return [
+      { x: p1.x + dx * t, y: p1.y },
+      { x: p2.x - dx * t, y: p2.y },
+    ];
+  }
+  if ((fSide === 'bottom' && tSide === 'top') || (fSide === 'top' && tSide === 'bottom')) {
+    return [
+      { x: p1.x, y: p1.y + dy * t },
+      { x: p2.x, y: p2.y - dy * t },
+    ];
+  }
+  // Mixed anchors (e.g., top→left)
+  if (fSide === 'top' || fSide === 'bottom') {
+    return [
+      { x: p1.x, y: p1.y + dy * t },
+      { x: p2.x - dx * t, y: p2.y },
+    ];
+  }
+  return [
+    { x: p1.x + dx * t, y: p1.y },
+    { x: p2.x, y: p2.y - dy * t },
+  ];
+}
+
+// Point on cubic bezier at t
+function bezAt(t, p0, c1, c2, p3) {
+  const u = 1 - t;
+  return {
+    x: u*u*u*p0.x + 3*u*u*t*c1.x + 3*u*t*t*c2.x + t*t*t*p3.x,
+    y: u*u*u*p0.y + 3*u*u*t*c1.y + 3*u*t*t*c2.y + t*t*t*p3.y,
+  };
+}
+
+// Shorten path end for arrowhead clearance
+function shortenEnd(p, c2, amount) {
+  const dx = p.x - c2.x, dy = p.y - c2.y;
+  const d = Math.sqrt(dx*dx + dy*dy) || 1;
+  return { x: p.x - (dx/d)*amount, y: p.y - (dy/d)*amount };
+}
+
+function renderSVG() {
+  const { states, edges } = data();
+  const el = document.getElementById('stateMachine');
+
+  // Viewbox from state bounds
+  let minX = Infinity, minY = Infinity, maxX = 0, maxY = 0;
+  states.forEach(s => {
+    minX = Math.min(minX, s.x - s.w/2);
+    minY = Math.min(minY, s.y - s.h/2);
+    maxX = Math.max(maxX, s.x + s.w/2);
+    maxY = Math.max(maxY, s.y + s.h/2);
+  });
+  const pad = 55;
+  const vb = `${minX-pad} ${minY-pad} ${maxX-minX+pad*2} ${maxY-minY+pad*2}`;
+
+  let svg = `<svg viewBox="${vb}" xmlns="http://www.w3.org/2000/svg">`;
+
+  // Defs: arrowheads
+  svg += '<defs>';
+  edges.forEach(e => {
+    const mid = eid(e).replace(/[->]/g, '_');
+    svg += `<marker id="a_${mid}" viewBox="0 0 10 7" refX="9" refY="3.5" markerWidth="9" markerHeight="7" orient="auto-start-reverse"><polygon points="0 0,10 3.5,0 7" fill="${e.color}" opacity=".85"/></marker>`;
+  });
+  svg += '</defs>';
+
+  // Edges
+  edges.forEach(e => {
+    const fromS = states.find(s => s.id === e.from);
+    const toS   = states.find(s => s.id === e.to);
+    if (!fromS || !toS) return;
+    const mid = eid(e).replace(/[->]/g, '_');
+    const p1 = anchor(fromS, e.fs);
+    let p2 = anchor(toS, e.ts);
+    const [c1, c2] = ctrlPts(p1, p2, e.fs, e.ts, e.loop);
+    p2 = shortenEnd(p2, c2, 6);
+
+    svg += `<g class="edge" data-edge="${eid(e)}">`;
+    svg += `<path d="M${p1.x},${p1.y} C${c1.x},${c1.y} ${c2.x},${c2.y} ${p2.x},${p2.y}" fill="none" stroke="${e.color}" stroke-width="1.6" opacity=".55" marker-end="url(#a_${mid})"/>`;
+
+    // Label
+    if (e.label) {
+      const lp = bezAt(0.5, p1, c1, c2, p2);
+      const lx = lp.x + (e.labelDx || 0);
+      const ly = lp.y + (e.labelDy || 0);
+      const lines = e.label.split('\n');
+      svg += `<text x="${lx}" y="${ly}" text-anchor="middle" font-family="'IBM Plex Mono',monospace" font-size="10" font-weight="500" fill="${e.color}" opacity=".8">`;
+      lines.forEach((ln, i) => {
+        svg += `<tspan x="${lx}" dy="${i === 0 ? 0 : 13}">${ln}</tspan>`;
+      });
+      svg += '</text>';
+    }
+    svg += '</g>';
+  });
+
+  // States
+  states.forEach(s => {
+    const rx = s.round ? 22 : 10;
+    const glowColor = s.color.glow || 'rgba(123,156,255,.3)';
+    svg += `<g class="state-node" data-state="${s.id}" style="--glow-color:${glowColor}">`;
+    svg += `<rect x="${s.x-s.w/2}" y="${s.y-s.h/2}" width="${s.w}" height="${s.h}" rx="${rx}" fill="${s.color.fill}" stroke="${s.color.stroke}" stroke-width="1.6"/>`;
+    if (s.terminal) {
+      svg += `<rect x="${s.x-s.w/2+4}" y="${s.y-s.h/2+4}" width="${s.w-8}" height="${s.h-8}" rx="${rx-3}" fill="none" stroke="${s.color.stroke}" stroke-width=".6" opacity=".35"/>`;
+    }
+    const lines = s.label.split('\n');
+    const lh = 14;
+    const startY = s.y - ((lines.length - 1) * lh) / 2;
+    lines.forEach((ln, i) => {
+      svg += `<text x="${s.x}" y="${startY + i*lh}" text-anchor="middle" dominant-baseline="central" font-family="'IBM Plex Mono',monospace" font-size="12" font-weight="600" fill="${s.color.text}">${ln}</text>`;
+    });
+    svg += '</g>';
+  });
+
+  svg += '</svg>';
+  el.innerHTML = svg;
+}
+
+function renderScenarios() {
+  const { scenarios } = data();
+  const list = document.getElementById('scenarioList');
+  list.innerHTML = '';
+  scenarios.forEach(sc => {
+    const btn = document.createElement('button');
+    btn.className = 'scenario-btn' + (currentScenario?.id === sc.id ? ' active' : '');
+    btn.innerHTML = `<span class="dot" style="background:${sc.dot};box-shadow:0 0 6px ${sc.dot}"></span>${sc.name}`;
+    btn.onclick = () => selectScenario(sc);
+    list.appendChild(btn);
+  });
+}
+
+function renderLegend() {
+  const el = document.getElementById('legend');
+  const items = currentTab === 'automation'
+    ? [['PENDING',C.pending.stroke],['APPROVED',C.approved.stroke],['REJECTED',C.rejected.stroke],['TIMED_OUT',C.timedout.stroke],['Terminal (double border)','#555']]
+    : [['SDL Event',C.create.stroke],['Lookup / Enrich',C.neutral.stroke],['Create Mirror',C.approved.stroke],['Update Mirror',C.cyan.stroke],['Delete Mirror',C.rejected.stroke]];
+  el.innerHTML = items.map(([l,c]) => `<span class="legend-item"><span class="swatch" style="background:${c}"></span>${l}</span>`).join('');
+}
+
+function selectScenario(sc) {
+  currentScenario = sc;
+  currentStep = -1;
+  renderScenarios();
+  clearHL();
+  updateWalk();
+  nextStep();
+}
+
+function clearHL() {
+  document.querySelectorAll('.state-node').forEach(n => n.classList.remove('highlight'));
+  document.querySelectorAll('.edge').forEach(e => e.classList.remove('highlight','dim'));
+}
+
+function applyHL() {
+  if (!currentScenario || currentStep < 0) return;
+  const step = currentScenario.steps[currentStep];
+  if (!step) return;
+  document.querySelectorAll('.edge').forEach(e => e.classList.add('dim'));
+  document.querySelectorAll('.state-node').forEach(n => {
+    n.classList.toggle('highlight', step.hl.includes(n.dataset.state));
+  });
+  if (step.edge) {
+    const edgeEl = document.querySelector(`.edge[data-edge="${step.edge}"]`);
+    if (edgeEl) { edgeEl.classList.remove('dim'); edgeEl.classList.add('highlight'); }
+  }
+}
+
+function updateWalk() {
+  const detail = document.getElementById('stepDetail');
+  const counter = document.getElementById('stepCounter');
+  const prev = document.getElementById('btnPrev');
+  const next = document.getElementById('btnNext');
+
+  if (!currentScenario) {
+    detail.innerHTML = '<div class="step-title">Choose a scenario from the left</div><div class="step-desc">Click any scenario to walk through it step by step. Use Next / Prev or arrow keys to advance.</div>';
+    counter.textContent = 'Select a scenario';
+    prev.disabled = next.disabled = true;
+    return;
+  }
+  const steps = currentScenario.steps;
+  prev.disabled = currentStep <= 0;
+  next.disabled = currentStep >= steps.length - 1;
+  counter.textContent = `Step ${currentStep + 1} / ${steps.length}`;
+  if (currentStep >= 0 && currentStep < steps.length) {
+    const s = steps[currentStep];
+    detail.innerHTML = `<div class="step-title">${s.title}</div><div class="step-desc">${s.desc}</div>`;
+  }
+}
+
+function nextStep() {
+  if (!currentScenario || currentStep >= currentScenario.steps.length - 1) return;
+  currentStep++;
+  clearHL(); applyHL(); updateWalk();
+}
+function prevStep() {
+  if (currentStep <= 0) return;
+  currentStep--;
+  clearHL(); applyHL(); updateWalk();
+}
+function resetSteps() {
+  currentStep = -1;
+  clearHL(); updateWalk();
+  if (currentScenario) nextStep();
+}
+
+// Tab switching
+document.querySelectorAll('.tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    currentTab = tab.dataset.tab === 'agent' ? 'agent' : 'automation';
+    document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t === tab));
+    currentScenario = null; currentStep = -1;
+    renderSVG(); renderScenarios(); renderLegend(); updateWalk();
+  });
+});
+
+document.getElementById('btnNext').addEventListener('click', nextStep);
+document.getElementById('btnPrev').addEventListener('click', prevStep);
+document.getElementById('btnReset').addEventListener('click', resetSteps);
+
+document.addEventListener('keydown', e => {
+  if (e.key === 'ArrowRight' || e.key === ' ') { e.preventDefault(); nextStep(); }
+  if (e.key === 'ArrowLeft') { e.preventDefault(); prevStep(); }
+  if (e.key === 'r' && !e.metaKey && !e.ctrlKey) resetSteps();
+});
+
+window.addEventListener('resize', renderSVG);
+renderSVG(); renderScenarios(); renderLegend(); updateWalk();
+</script>
+</body>
+</html>
