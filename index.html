@@ -359,7 +359,7 @@ const autoScenarios = [
       { hl: ['create'], edge: null, title: 'Consumer creates approval request', desc: 'LLM action generates content and calls <code>CreateApprovalRequest</code> with the generated text as <code>initial_data</code>. Sets <code>expiration_date</code> and <code>consumer_context</code> (with invocation token). Returns <code>TIMEOUT_DATE</code> to ESB runtime.' },
       { hl: ['create','pending'], edge: 'create->pending', title: 'Status: PENDING', desc: 'Approval request is now <code>PENDING</code>. TimeCapsule scheduled for <code>expiration_date</code>. <code>ApprovalRequestCreated</code> domain event fires. Pre-installed automation sends email + push notification to the reviewer.' },
       { hl: ['pending'], edge: null, title: 'Reviewer sees the request', desc: 'Reviewer opens the approval management page from the notification link. Sees the content in <code>initial_data</code> rendered according to <code>data_ui_schema</code>. Reviews the content.' },
-      { hl: ['pending','approved'], edge: 'pending->approved', title: 'Reviewer approves', desc: 'Reviewer clicks Approve. Calls <code>AcceptApprovalRequest</code> with no <code>updated_data</code>. Status transitions to <code>APPROVED</code>. TimeCapsule cancelled. <code>status_info</code> populated with <code>decision_reason=USER_APPROVED</code>, reviewer identity, and timestamp.' },
+      { hl: ['pending','approved'], edge: 'pending->approved', title: 'Reviewer approves', desc: 'Reviewer clicks Approve. Calls <code>AcceptApprovalRequest</code> with no <code>updated_data</code>. Status transitions to <code>APPROVED</code>. TimeCapsule cancelled. <code>status_info.updated_by</code> populated with the reviewer\'s identity.' },
       { hl: ['approved'], edge: null, title: 'Consumer resumes workflow', desc: '<code>ApprovalRequestAccepted</code> domain event fires. LLM action adapter reads <code>consumer_context</code> to get invocation token. Resolves final content: <code>updated_data</code> if present (reviewer edited), else <code>initial_data</code> (original). Calls <code>reportActionInvocationCompleted(SUCCESS, final_content)</code>. Automation resumes.' },
     ]
   },
@@ -377,15 +377,15 @@ const autoScenarios = [
     id: 'reject', name: 'Reject', dot: C.rejected.stroke,
     steps: [
       { hl: ['create','pending'], edge: 'create->pending', title: 'Approval request created', desc: 'Consumer creates request. Status is <code>PENDING</code>. Notification sent.' },
-      { hl: ['pending','rejected'], edge: 'pending->rejected', title: 'Reviewer rejects', desc: 'Reviewer calls <code>RejectApprovalRequest</code> with optional <code>reason_detail</code>. Status → <code>REJECTED</code>. TimeCapsule cancelled. <code>status_info.decision_reason = USER_REJECTED</code>.' },
+      { hl: ['pending','rejected'], edge: 'pending->rejected', title: 'Reviewer rejects', desc: 'Reviewer calls <code>RejectApprovalRequest</code>. Status → <code>REJECTED</code>. TimeCapsule cancelled. <code>status_info.updated_by</code> populated with the reviewer\'s identity.' },
       { hl: ['rejected'], edge: null, title: 'Consumer handles rejection', desc: '<code>ApprovalRequestRejected</code> event fires. The consumer decides what to do: report FAILURE (automation stops), report SUCCESS with empty output (automation continues), or any custom logic. This is entirely the consumer\'s decision, not dictated by the approval service.' },
     ]
   },
   {
     id: 'timeout-pending', name: 'Timeout (from PENDING)', dot: C.timedout.stroke,
     steps: [
-      { hl: ['create','pending'], edge: 'create->pending', title: 'Request created, clock ticking', desc: '<code>expiration_date</code> set at creation. TimeCapsule scheduled. Maximum 30 days.' },
-      { hl: ['pending','timedout'], edge: 'pending->timedout', title: 'TimeCapsule fires', desc: 'Background job finds <code>status = PENDING AND expiration_date &lt;= now()</code>. Transitions to <code>TIMED_OUT</code>. <code>status_info.decision_reason = TIMED_OUT</code>.' },
+      { hl: ['create','pending'], edge: 'create->pending', title: 'Request created, clock ticking', desc: '<code>expiration_date</code> set at creation — consumer picks any duration, no cap. TimeCapsule schedules a single task with <code>fireAt = expiration_date</code>.' },
+      { hl: ['pending','timedout'], edge: 'pending->timedout', title: 'TimeCapsule fires', desc: 'TimeCapsule fires at <code>expiration_date</code>. Handler checks the approval is still <code>PENDING</code>, then transitions to <code>TIMED_OUT</code>. <code>status_info.updated_by</code> populated with the system app identity.' },
       { hl: ['timedout'], edge: null, title: 'Consumer handles timeout', desc: '<code>ApprovalRequestTimedOut</code> event fires. Consumer handles based on policy — same as rejection handling.' },
     ]
   },
@@ -393,61 +393,72 @@ const autoScenarios = [
 
 const agentScenarios = [
   {
-    id: 'agent-create', name: 'New approval → mirror created', dot: C.approved.stroke,
+    id: 'agent-ui-decision', name: 'Reviewer acts from our UI (view_only)', dot: C.cancelled.stroke,
     steps: [
-      { hl: ['ext-create'], edge: null, title: 'SDL CREATED event arrives', desc: 'Agent-maker\'s <code>ApprovalRequest</code> entity created. SDL domain event published to Kafka. Contains <code>id</code>, <code>invocation_id</code>, <code>status</code>, <code>initial_payload</code>, <code>payload_schema</code>, <code>tool_name</code>, <code>summary</code>.' },
-      { hl: ['ext-create','lookup'], edge: 'ext-create->lookup', title: 'Lookup mirror', desc: 'Query our table by <code>custom_agent_info.source_approval_request_id</code> matching the incoming <code>id</code>.' },
-      { hl: ['lookup','enrich'], edge: 'lookup->enrich', title: 'Mirror not found → enrich', desc: 'No existing mirror. Fetch the <code>Invocation</code> entity via <code>SearchInvocations(invocation_id)</code> to check for <code>automation_trigger_metadata</code>.' },
-      { hl: ['enrich','mirror-new'], edge: 'enrich->mirror-new', title: 'Create mirror', desc: 'Invocation has <code>automation_trigger_metadata</code> → create mirrored <code>ApprovalRequest</code> with <code>origin=CUSTOM_AGENT</code>. Populate <code>automation_context</code> from metadata. Set <code>custom_agent_info</code> (source ID, task ID, invocation ID, tool call ID). Map content: <code>initial_payload→initial_data</code>, <code>payload_schema→data_schema</code>, <code>tool_name+summary+api_call_docs_url→data_ui_schema</code>. All set once.' },
+      { hl: [], edge: null, title: 'Reviewer opens a mirrored row in our approvals table', desc: 'The row has <code>view_only = true</code> and <code>consumer_key = "custom-agent"</code>. It shows tool_name / summary / payload pulled from the mirror. Our backend will refuse any mutation endpoint on this row (<code>FAILED_PRECONDITION</code>) — the source system owns the state.' },
+      { hl: [], edge: null, title: 'UI renders agent-maker\'s approval component (not our modal)', desc: 'Frontend detects <code>view_only + consumer_key</code> and renders an embedded component (e.g., agent-maker\'s <code>EditApprovalModal</code> from <code>@wix/agent-maker-bm</code>, or a thin re-render we own). The reviewer sees the same UI they would see in agent-maker\'s native surface.' },
+      { hl: [], edge: null, title: 'Reviewer clicks Approve / Reject in the embedded component', desc: 'The component calls agent-maker directly — <code>wix.agentmaker.approvals.v1.Approvals.AcceptApprovalRequest(idempotency_key)</code> or <code>RejectApprovalRequest</code>. <code>idempotency_key</code> on our row IS the upstream approval\'s GUID. User-auth CallScope is forwarded so agent-maker can enforce <code>AGENT_MAKER.APPROVAL_REQUEST_UPDATE</code> and record <code>status_modified_by</code> from the user.' },
+      { hl: ['ext-update'], edge: null, title: 'Agent-maker transitions its record → SDL UPDATED event', desc: 'Agent-maker flips their entity to ACCEPTED / REJECTED, bumps <code>revision</code>, and publishes an SDL UPDATED event to Kafka. Our backend is still not involved at this point — we only learn about the change through their event stream.' },
+      { hl: ['ext-update','lookup'], edge: 'ext-update->lookup', title: 'Our sync handler looks up the mirror', desc: 'Query by <code>consumer_key = "custom-agent"</code> + <code>automation_context.idempotency_key = incoming id</code>. Mirror exists.' },
+      { hl: ['lookup','mirror-upd'], edge: 'lookup->mirror-upd', title: 'Mirror updated — reviewer sees the terminal state', desc: 'Status mapped to <code>APPROVED</code> or <code>REJECTED</code>. <code>status_info.updated_by</code> mapped from their <code>status_modified_by</code>. <code>updated_data</code> refreshed from <code>updated_payload</code>. The reviewer\'s UI re-reads (or receives a push via SDL sync) and shows the final state.' },
     ]
   },
   {
-    id: 'agent-approve', name: 'Reviewer approves → mirror updated', dot: C.approved.stroke,
+    id: 'agent-create', name: 'New upstream approval → mirror created', dot: C.approved.stroke,
     steps: [
-      { hl: ['ext-update'], edge: null, title: 'SDL UPDATED event (status=ACCEPTED)', desc: 'Reviewer approves on the agent-maker UI. Entity status changes to ACCEPTED. SDL UPDATED event published.' },
-      { hl: ['ext-update','lookup'], edge: 'ext-update->lookup', title: 'Lookup mirror', desc: 'Query by <code>source_approval_request_id</code>. Mirror exists from the CREATED event.' },
-      { hl: ['lookup','mirror-upd'], edge: 'lookup->mirror-upd', title: 'Update mirror', desc: 'Check <code>revision > stored revision</code> (skip if stale). Update: <code>status→APPROVED</code>, populate <code>status_info</code> (<code>decision_reason=USER_APPROVED</code>, <code>modified_by</code> from their Actor, <code>decided_date</code> from <code>updated_date</code>). Update <code>updated_data</code> from their <code>updated_payload</code> if changed.' },
+      { hl: ['ext-create'], edge: null, title: 'SDL CREATED event arrives', desc: 'Agent-maker\'s <code>ApprovalRequest</code> entity created. SDL domain event published to Kafka. Event carries the entity: <code>id</code>, <code>revision</code>, <code>invocation_id</code>, <code>status</code>, <code>initial_payload</code>, <code>payload_schema</code>, <code>tool_name</code>, <code>summary</code>, <code>api_call_docs_url</code>.' },
+      { hl: ['ext-create','lookup'], edge: 'ext-create->lookup', title: 'Lookup mirror', desc: 'Query our table by <code>consumer_key = "custom-agent"</code> + <code>automation_context.idempotency_key = incoming id</code>.' },
+      { hl: ['lookup','enrich'], edge: 'lookup->enrich', title: 'Mirror not found → enrich from Invocation', desc: 'No existing mirror. Call <code>GetInvocation(invocation_id)</code> to check for <code>automation_trigger_metadata</code>.' },
+      { hl: ['enrich','mirror-new'], edge: 'enrich->mirror-new', title: 'Create mirror', desc: 'Invocation has <code>automation_trigger_metadata</code> → create mirrored row with <code>consumer_key = "custom-agent"</code>, <code>view_only = true</code>, <code>expiration_date = null</code>. Populate <code>automation_context</code> from metadata (including <code>idempotency_key = their id</code>). Map content: <code>initial_payload → initial_data</code>, <code>payload_schema → data_schema</code>, and <code>tool_name + summary + api_call_docs_url → data_ui_schema</code>. All immutable fields set once.' },
     ]
   },
   {
-    id: 'agent-reject', name: 'Reviewer rejects → mirror updated', dot: C.rejected.stroke,
+    id: 'agent-approve', name: 'Upstream approval accepted → mirror updated', dot: C.approved.stroke,
     steps: [
-      { hl: ['ext-update'], edge: null, title: 'SDL UPDATED event (status=REJECTED)', desc: 'Reviewer rejects on agent-maker UI. Status changes to REJECTED.' },
-      { hl: ['ext-update','lookup'], edge: 'ext-update->lookup', title: 'Lookup mirror', desc: 'Query by <code>source_approval_request_id</code>.' },
-      { hl: ['lookup','mirror-upd'], edge: 'lookup->mirror-upd', title: 'Update mirror', desc: '<code>status→REJECTED</code>. <code>status_info.decision_reason = USER_REJECTED</code>. <code>modified_by</code> mapped from their UserActor.' },
+      { hl: ['ext-update'], edge: null, title: 'SDL UPDATED event (status=ACCEPTED)', desc: 'Reviewer approves (through either agent-maker\'s native UI or our embedded component — both call the same RPC). Agent-maker flips status to ACCEPTED and publishes SDL UPDATED.' },
+      { hl: ['ext-update','lookup'], edge: 'ext-update->lookup', title: 'Lookup mirror', desc: 'Query by <code>consumer_key</code> + <code>idempotency_key</code>. Mirror exists from the earlier CREATED event.' },
+      { hl: ['lookup','mirror-upd'], edge: 'lookup->mirror-upd', title: 'Update mirror', desc: 'Skip if incoming <code>revision ≤ stored revision</code> (dedup). Otherwise: our current status is <code>PENDING</code> → apply transition. <code>status → APPROVED</code>. <code>status_info.updated_by</code> mapped from their <code>status_modified_by</code>. Refresh <code>updated_data</code> from <code>updated_payload</code>.' },
     ]
   },
   {
-    id: 'agent-auto', name: 'Auto-approval (SPI)', dot: C.approved.stroke,
+    id: 'agent-reject', name: 'Upstream approval rejected → mirror updated', dot: C.rejected.stroke,
     steps: [
-      { hl: ['ext-create'], edge: null, title: 'SDL CREATED event (status=ACCEPTED)', desc: 'Agent-maker\'s SPI auto-approval creates the ApprovalRequest directly as ACCEPTED — it never passes through PENDING. <code>status_modified_by</code> has SYSTEM actor.' },
-      { hl: ['ext-create','lookup'], edge: 'ext-create->lookup', title: 'Lookup mirror', desc: 'No existing mirror.' },
+      { hl: ['ext-update'], edge: null, title: 'SDL UPDATED event (status=REJECTED)', desc: 'Reviewer rejects (from either UI). Agent-maker publishes SDL UPDATED with status=REJECTED.' },
+      { hl: ['ext-update','lookup'], edge: 'ext-update->lookup', title: 'Lookup mirror', desc: 'Query by <code>consumer_key</code> + <code>idempotency_key</code>.' },
+      { hl: ['lookup','mirror-upd'], edge: 'lookup->mirror-upd', title: 'Update mirror', desc: '<code>status → REJECTED</code>. <code>status_info.updated_by</code> mapped from their <code>UserActor</code>.' },
+    ]
+  },
+  {
+    id: 'agent-auto', name: 'Auto-approval (SPI / rules)', dot: C.approved.stroke,
+    steps: [
+      { hl: ['ext-create'], edge: null, title: 'SDL CREATED event (status=ACCEPTED)', desc: 'Agent-maker\'s SPI or <code>AutoApprovalRules</code> creates the approval directly as ACCEPTED — it never passes through PENDING. Their <code>status_modified_by</code> is an <code>AutoApprovalRuleActor</code>.' },
+      { hl: ['ext-create','lookup'], edge: 'ext-create->lookup', title: 'Lookup mirror — not found', desc: 'First time seeing this ID.' },
       { hl: ['lookup','enrich'], edge: 'lookup->enrich', title: 'Fetch invocation', desc: 'Check for <code>automation_trigger_metadata</code>.' },
-      { hl: ['enrich','mirror-new'], edge: 'enrich->mirror-new', title: 'Create mirror as APPROVED', desc: 'Mirror created with <code>status=APPROVED</code> directly. <code>decision_reason=UNKNOWN_DECISION_REASON</code> (not USER_APPROVED — this is a system decision, not a human one). <code>modified_by.app_id</code> = their <code>app_def_id</code>. UI can distinguish auto-approved (app_id actor) from human-approved (user_id actor).' },
+      { hl: ['enrich','mirror-new'], edge: 'enrich->mirror-new', title: 'Create mirror already as APPROVED', desc: 'Mirror created with <code>status = APPROVED</code> directly (never PENDING on our side). <code>status_info.updated_by.app_id</code> = agent-maker\'s <code>app_def_id</code> (rule IDs dropped — acceptable loss for display). The UI can distinguish auto-approved (<code>app_id</code> populated) from human-approved (<code>user_id</code> populated).' },
     ]
   },
   {
-    id: 'agent-timeout', name: 'Invocation timeout (30-day)', dot: C.timedout.stroke,
+    id: 'agent-timeout', name: 'Upstream invocation timeout', dot: C.timedout.stroke,
     steps: [
-      { hl: ['ext-update'], edge: null, title: 'SDL UPDATED (status=REJECTED, no actor)', desc: 'Invocation\'s 30-day TimeCapsule fires. Invocations service bulk-rejects all remaining PENDING approval requests. <code>status_modified_by</code> is empty.' },
+      { hl: ['ext-update'], edge: null, title: 'SDL UPDATED (status=REJECTED, no actor)', desc: 'Their Invocation-level TimeCapsule fires (agent-maker owns that timeout — not us). The invocations service bulk-rejects all remaining PENDING approvals. <code>status_modified_by</code> is empty for these bulk-rejects.' },
       { hl: ['ext-update','lookup'], edge: 'ext-update->lookup', title: 'Lookup mirror', desc: 'Mirror exists from earlier CREATED event.' },
-      { hl: ['lookup','mirror-upd'], edge: 'lookup->mirror-upd', title: 'Update mirror → REJECTED', desc: '<code>status→REJECTED</code>. <code>decision_reason=UNKNOWN_DECISION_REASON</code> (not USER_REJECTED — nobody actively said no). <code>modified_by</code> is empty (no actor). Phase 1 maps all their REJECTED to our REJECTED.' },
+      { hl: ['lookup','mirror-upd'], edge: 'lookup->mirror-upd', title: 'Update mirror → REJECTED', desc: '<code>status → REJECTED</code>. <code>status_info.updated_by</code> is empty (no actor). We lose the timeout-vs-rejection distinction on our side — both of their REJECTED map to our REJECTED. Documented as an eventual-consistency trade-off.' },
     ]
   },
   {
     id: 'agent-recovery', name: 'Recovery (CREATED missed)', dot: C.cyan.stroke,
     steps: [
-      { hl: ['ext-create'], edge: null, title: 'CREATED event fails', desc: 'SDL CREATED arrives but processing fails — e.g., transient error fetching the Invocation entity. Event consumed, no mirror created.' },
+      { hl: ['ext-create'], edge: null, title: 'CREATED event processing fails', desc: 'SDL CREATED arrives but processing fails — e.g., transient error fetching the Invocation entity. Event acked, no mirror created.' },
       { hl: ['ext-update'], edge: null, title: 'UPDATED event arrives later', desc: 'Status or content changes on the upstream entity. SDL UPDATED event published.' },
-      { hl: ['ext-update','lookup'], edge: 'ext-update->lookup', title: 'Lookup mirror — not found', desc: 'No mirror from the failed CREATED. UPDATED hits the same "not found" code path.' },
-      { hl: ['lookup','enrich'], edge: 'lookup->enrich', title: 'Fetch invocation', desc: 'Same enrichment flow as CREATED: fetch Invocation, check for <code>automation_trigger_metadata</code>.' },
+      { hl: ['ext-update','lookup'], edge: 'ext-update->lookup', title: 'Lookup mirror — not found', desc: 'No mirror from the failed CREATED. UPDATED hits the same "not found" code path as a CREATED would.' },
+      { hl: ['lookup','enrich'], edge: 'lookup->enrich', title: 'Fetch invocation', desc: 'Same enrichment flow as CREATED: call <code>GetInvocation</code>, check for <code>automation_trigger_metadata</code>.' },
       { hl: ['enrich','mirror-new'], edge: 'enrich->mirror-new', title: 'Create mirror with current status', desc: 'Mirror created from the UPDATED event\'s current state. The sync is <strong>recoverable</strong> — no single event is the only chance to create the mirror.' },
     ]
   },
   {
     id: 'agent-skip', name: 'Standalone agent (skipped)', dot: '#4a4f6a',
     steps: [
-      { hl: ['ext-create'], edge: null, title: 'SDL CREATED event', desc: 'Agent-maker ApprovalRequest created.' },
+      { hl: ['ext-create'], edge: null, title: 'SDL CREATED event', desc: 'Agent-maker ApprovalRequest created for a standalone chat invocation.' },
       { hl: ['ext-create','lookup'], edge: 'ext-create->lookup', title: 'Lookup mirror — not found', desc: 'First time seeing this ID.' },
       { hl: ['lookup','enrich'], edge: 'lookup->enrich', title: 'Fetch invocation', desc: 'Fetch the Invocation by <code>invocation_id</code>.' },
       { hl: ['enrich','skip'], edge: 'enrich->skip', title: 'No automation metadata → skip', desc: 'Invocation has no <code>automation_trigger_metadata</code> — standalone agent chat, not triggered by an automation. Phase 1 only syncs automation-backed approvals.' },
@@ -457,7 +468,7 @@ const agentScenarios = [
     id: 'agent-delete', name: 'Delete (mirror exists)', dot: C.rejected.stroke,
     steps: [
       { hl: ['ext-delete'], edge: null, title: 'SDL DELETE event', desc: 'Agent-maker deletes their ApprovalRequest entity.' },
-      { hl: ['ext-delete','lookup'], edge: 'ext-delete->lookup', title: 'Lookup mirror', desc: 'Query by <code>source_approval_request_id</code>.' },
+      { hl: ['ext-delete','lookup'], edge: 'ext-delete->lookup', title: 'Lookup mirror', desc: 'Query by <code>consumer_key</code> + <code>idempotency_key</code>.' },
       { hl: ['lookup','mirror-del'], edge: 'lookup->mirror-del', title: 'Delete mirror', desc: 'Mirror found → delete it from our table.' },
     ]
   },
