@@ -397,9 +397,9 @@ const agentScenarios = [
     steps: [
       { hl: [], edge: null, title: 'Reviewer opens a mirrored row in our approvals table', desc: 'The row has <code>view_only = true</code> and <code>consumer_key = "custom-agent"</code>. It shows tool_name / summary / payload pulled from the mirror. Our backend will refuse any mutation endpoint on this row (<code>FAILED_PRECONDITION</code>) — the source system owns the state.' },
       { hl: [], edge: null, title: 'UI renders agent-maker\'s approval component (not our modal)', desc: 'Frontend detects <code>view_only + consumer_key</code> and renders an embedded component (e.g., agent-maker\'s <code>EditApprovalModal</code> from <code>@wix/agent-maker-bm</code>, or a thin re-render we own). The reviewer sees the same UI they would see in agent-maker\'s native surface.' },
-      { hl: [], edge: null, title: 'Reviewer clicks Approve / Reject in the embedded component', desc: 'The component calls agent-maker directly — <code>wix.agentmaker.approvals.v1.Approvals.AcceptApprovalRequest(idempotency_key)</code> or <code>RejectApprovalRequest</code>. <code>idempotency_key</code> on our row IS the upstream approval\'s GUID. User-auth CallScope is forwarded so agent-maker can enforce <code>AGENT_MAKER.APPROVAL_REQUEST_UPDATE</code> and record <code>status_modified_by</code> from the user.' },
+      { hl: [], edge: null, title: 'Reviewer clicks Approve / Reject in the embedded component', desc: 'The component calls agent-maker directly — <code>wix.agentmaker.approvals.v1.Approvals.AcceptApprovalRequest(external_id)</code> or <code>RejectApprovalRequest</code>. <code>external_id</code> on our row IS the upstream approval\'s GUID. User-auth CallScope is forwarded so agent-maker can enforce <code>AGENT_MAKER.APPROVAL_REQUEST_UPDATE</code> and record <code>status_modified_by</code> from the user.' },
       { hl: ['ext-update'], edge: null, title: 'Agent-maker transitions its record → SDL UPDATED event', desc: 'Agent-maker flips their entity to ACCEPTED / REJECTED, bumps <code>revision</code>, and publishes an SDL UPDATED event to Kafka. Our backend is still not involved at this point — we only learn about the change through their event stream.' },
-      { hl: ['ext-update','lookup'], edge: 'ext-update->lookup', title: 'Our sync handler looks up the mirror', desc: 'Query by <code>consumer_key = "custom-agent"</code> + <code>automation_context.idempotency_key = incoming id</code>. Mirror exists.' },
+      { hl: ['ext-update','lookup'], edge: 'ext-update->lookup', title: 'Our sync handler looks up the mirror', desc: 'Query by <code>consumer_key = "custom-agent"</code> + <code>automation_context.external_id = incoming id</code>. Mirror exists.' },
       { hl: ['lookup','mirror-upd'], edge: 'lookup->mirror-upd', title: 'Mirror updated — reviewer sees the terminal state', desc: 'Status mapped to <code>APPROVED</code> or <code>REJECTED</code>. <code>status_info.updated_by</code> mapped from their <code>status_modified_by</code>. <code>updated_data</code> refreshed from <code>updated_payload</code>. The reviewer\'s UI re-reads (or receives a push via SDL sync) and shows the final state.' },
     ]
   },
@@ -407,16 +407,16 @@ const agentScenarios = [
     id: 'agent-create', name: 'New upstream approval → mirror created', dot: C.approved.stroke,
     steps: [
       { hl: ['ext-create'], edge: null, title: 'SDL CREATED event arrives', desc: 'Agent-maker\'s <code>ApprovalRequest</code> entity created. SDL domain event published to Kafka. Event carries the entity: <code>id</code>, <code>revision</code>, <code>invocation_id</code>, <code>status</code>, <code>initial_payload</code>, <code>payload_schema</code>, <code>tool_name</code>, <code>summary</code>, <code>api_call_docs_url</code>.' },
-      { hl: ['ext-create','lookup'], edge: 'ext-create->lookup', title: 'Lookup mirror', desc: 'Query our table by <code>consumer_key = "custom-agent"</code> + <code>automation_context.idempotency_key = incoming id</code>.' },
+      { hl: ['ext-create','lookup'], edge: 'ext-create->lookup', title: 'Lookup mirror', desc: 'Query our table by <code>consumer_key = "custom-agent"</code> + <code>automation_context.external_id = incoming id</code>.' },
       { hl: ['lookup','enrich'], edge: 'lookup->enrich', title: 'Mirror not found → enrich from Invocation', desc: 'No existing mirror. Call <code>GetInvocation(invocation_id)</code> to check for <code>automation_trigger_metadata</code>.' },
-      { hl: ['enrich','mirror-new'], edge: 'enrich->mirror-new', title: 'Create mirror', desc: 'Invocation has <code>automation_trigger_metadata</code> → create mirrored row with <code>consumer_key = "custom-agent"</code>, <code>view_only = true</code>, <code>expiration_date = null</code>. Populate <code>automation_context</code> from metadata (including <code>idempotency_key = their id</code>). Map content: <code>initial_payload → initial_data</code>, <code>payload_schema → data_schema</code>, and <code>tool_name + summary + api_call_docs_url → data_ui_schema</code>. All immutable fields set once.' },
+      { hl: ['enrich','mirror-new'], edge: 'enrich->mirror-new', title: 'Create mirror', desc: 'Invocation has <code>automation_trigger_metadata</code> → create mirrored row with <code>consumer_key = "custom-agent"</code>, <code>view_only = true</code>, <code>expiration_date = null</code>. Populate <code>automation_context</code> from metadata (including <code>external_id = their id</code>). Map content: <code>initial_payload → initial_data</code>, <code>payload_schema → data_schema</code>, and <code>tool_name + summary + api_call_docs_url → data_ui_schema</code>. All immutable fields set once.' },
     ]
   },
   {
     id: 'agent-approve', name: 'Upstream approval accepted → mirror updated', dot: C.approved.stroke,
     steps: [
       { hl: ['ext-update'], edge: null, title: 'SDL UPDATED event (status=ACCEPTED)', desc: 'Reviewer approves (through either agent-maker\'s native UI or our embedded component — both call the same RPC). Agent-maker flips status to ACCEPTED and publishes SDL UPDATED.' },
-      { hl: ['ext-update','lookup'], edge: 'ext-update->lookup', title: 'Lookup mirror', desc: 'Query by <code>consumer_key</code> + <code>idempotency_key</code>. Mirror exists from the earlier CREATED event.' },
+      { hl: ['ext-update','lookup'], edge: 'ext-update->lookup', title: 'Lookup mirror', desc: 'Query by <code>consumer_key</code> + <code>external_id</code>. Mirror exists from the earlier CREATED event.' },
       { hl: ['lookup','mirror-upd'], edge: 'lookup->mirror-upd', title: 'Update mirror', desc: 'Skip if incoming <code>revision ≤ stored revision</code> (dedup). Otherwise: our current status is <code>PENDING</code> → apply transition. <code>status → APPROVED</code>. <code>status_info.updated_by</code> mapped from their <code>status_modified_by</code>. Refresh <code>updated_data</code> from <code>updated_payload</code>.' },
     ]
   },
@@ -424,7 +424,7 @@ const agentScenarios = [
     id: 'agent-reject', name: 'Upstream approval rejected → mirror updated', dot: C.rejected.stroke,
     steps: [
       { hl: ['ext-update'], edge: null, title: 'SDL UPDATED event (status=REJECTED)', desc: 'Reviewer rejects (from either UI). Agent-maker publishes SDL UPDATED with status=REJECTED.' },
-      { hl: ['ext-update','lookup'], edge: 'ext-update->lookup', title: 'Lookup mirror', desc: 'Query by <code>consumer_key</code> + <code>idempotency_key</code>.' },
+      { hl: ['ext-update','lookup'], edge: 'ext-update->lookup', title: 'Lookup mirror', desc: 'Query by <code>consumer_key</code> + <code>external_id</code>.' },
       { hl: ['lookup','mirror-upd'], edge: 'lookup->mirror-upd', title: 'Update mirror', desc: '<code>status → REJECTED</code>. <code>status_info.updated_by</code> mapped from their <code>UserActor</code>.' },
     ]
   },
@@ -468,7 +468,7 @@ const agentScenarios = [
     id: 'agent-delete', name: 'Delete (mirror exists)', dot: C.rejected.stroke,
     steps: [
       { hl: ['ext-delete'], edge: null, title: 'SDL DELETE event', desc: 'Agent-maker deletes their ApprovalRequest entity.' },
-      { hl: ['ext-delete','lookup'], edge: 'ext-delete->lookup', title: 'Lookup mirror', desc: 'Query by <code>consumer_key</code> + <code>idempotency_key</code>.' },
+      { hl: ['ext-delete','lookup'], edge: 'ext-delete->lookup', title: 'Lookup mirror', desc: 'Query by <code>consumer_key</code> + <code>external_id</code>.' },
       { hl: ['lookup','mirror-del'], edge: 'lookup->mirror-del', title: 'Delete mirror', desc: 'Mirror found → delete it from our table.' },
     ]
   },
