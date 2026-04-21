@@ -429,30 +429,11 @@ const agentScenarios = [
     ]
   },
   {
-    id: 'agent-auto', name: 'Auto-approval (SPI / rules)', dot: C.approved.stroke,
-    steps: [
-      { hl: ['ext-create'], edge: null, title: 'SDL CREATED event (status=ACCEPTED)', desc: 'Agent-maker\'s SPI or <code>AutoApprovalRules</code> creates the approval directly as ACCEPTED — it never passes through PENDING. Their <code>status_modified_by</code> is an <code>AutoApprovalRuleActor</code>.' },
-      { hl: ['ext-create','lookup'], edge: 'ext-create->lookup', title: 'Lookup mirror — not found', desc: 'First time seeing this ID.' },
-      { hl: ['lookup','enrich'], edge: 'lookup->enrich', title: 'Fetch invocation', desc: 'Check for <code>automation_trigger_metadata</code>.' },
-      { hl: ['enrich','mirror-new'], edge: 'enrich->mirror-new', title: 'Create mirror already as APPROVED', desc: 'Mirror created with <code>status = APPROVED</code> directly (never PENDING on our side). <code>status_info.updated_by.app_id</code> = agent-maker\'s <code>app_def_id</code> (rule IDs dropped — acceptable loss for display). The UI can distinguish auto-approved (<code>app_id</code> populated) from human-approved (<code>user_id</code> populated).' },
-    ]
-  },
-  {
     id: 'agent-timeout', name: 'Upstream invocation timeout', dot: C.timedout.stroke,
     steps: [
       { hl: ['ext-update'], edge: null, title: 'SDL UPDATED (status=REJECTED, no actor)', desc: 'Their Invocation-level TimeCapsule fires (agent-maker owns that timeout — not us). The invocations service bulk-rejects all remaining PENDING approvals. <code>status_modified_by</code> is empty for these bulk-rejects.' },
       { hl: ['ext-update','lookup'], edge: 'ext-update->lookup', title: 'Lookup mirror', desc: 'Mirror exists from earlier CREATED event.' },
       { hl: ['lookup','mirror-upd'], edge: 'lookup->mirror-upd', title: 'Update mirror → REJECTED', desc: '<code>status → REJECTED</code>. <code>status_info.updated_by</code> is empty (no actor). We lose the timeout-vs-rejection distinction on our side — both of their REJECTED map to our REJECTED. Documented as an eventual-consistency trade-off.' },
-    ]
-  },
-  {
-    id: 'agent-recovery', name: 'Recovery (CREATED missed)', dot: C.cyan.stroke,
-    steps: [
-      { hl: ['ext-create'], edge: null, title: 'CREATED event processing fails', desc: 'SDL CREATED arrives but processing fails — e.g., transient error fetching the Invocation entity. Event acked, no mirror created.' },
-      { hl: ['ext-update'], edge: null, title: 'UPDATED event arrives later', desc: 'Status or content changes on the upstream entity. SDL UPDATED event published.' },
-      { hl: ['ext-update','lookup'], edge: 'ext-update->lookup', title: 'Lookup mirror — not found', desc: 'No mirror from the failed CREATED. UPDATED hits the same "not found" code path as a CREATED would.' },
-      { hl: ['lookup','enrich'], edge: 'lookup->enrich', title: 'Fetch invocation', desc: 'Same enrichment flow as CREATED: call <code>GetInvocation</code>, check for <code>automation_trigger_metadata</code>.' },
-      { hl: ['enrich','mirror-new'], edge: 'enrich->mirror-new', title: 'Create mirror with current status', desc: 'Mirror created from the UPDATED event\'s current state. The sync is <strong>recoverable</strong> — no single event is the only chance to create the mirror.' },
     ]
   },
   {
